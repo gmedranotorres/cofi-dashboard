@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<link rel="stylesheet"
+href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+<style>
+#map{
+height:100vh;
+}
+</style>
+
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+
+const map = L.map('map').setView([41.78, -87.62], 11);
+
+L.tileLayer(
+  'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+).addTo(map);
+
+let outreachData = [];
+
+function getColor(people) {
+  if (people >= 50) return '#084081';
+  if (people >= 25) return '#0868ac';
+  if (people >= 10) return '#2b8cbe';
+  if (people >= 1) return '#7bccc4';
+  return '#FFD700';
+}
+
+let nameFixes = {};
+
+function findCommunityData(geoJsonName) {
+  const sheetName = nameFixes[geoJsonName] || geoJsonName;
+
+  return outreachData.find(row => row.community === sheetName);
+}
+
+function styleNeighborhood(feature) {
+  const name = feature.properties.pri_neigh;
+  const row = findCommunityData(name);
+const people = row ? row.peopleSpokenTo : 0;
+console.log(name, people);
+
+return {
+  fillColor: getColor(people),
+    weight: 1,
+    color: 'white',
+    fillOpacity: 0.7
+  };
+}
+
+function popupNeighborhood(feature, layer) {
+  const name = feature.properties.pri_neigh;
+  const row = findCommunityData(name);
+
+  if (row) {
+    layer.bindPopup(`
+      <b>${name}</b><br>
+      People spoken to: ${row.peopleSpokenTo}<br>
+      Doors knocked: ${row.doorsKnocked}<br>
+      Flyers distributed: ${row.flyersDistributed}<br>
+      Children found: ${row.childrenFound}
+    `);
+  } else {
+    layer.bindPopup(`
+      <b>${name}</b><br>
+      No outreach data yet.
+    `);
+  }
+}
+
+async function loadData() {
+
+  const response = await fetch(
+    "https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnQbclQYw4jcebqibtJuEhTzs4hPP73_j65xD27-I95plK3RGGEihI90z9ra0vIY3tsXNpK5cO_s-OnmsbSZqlELSgRvLDbujtq_IZNvUgYj6dfp3iTFw2r8eWamX_vuaNQsLPobh_34n5EuibSI-GR7W9gh2LjXVqlgsgSoiv1BROYirCoZA2Kxbu8T0txGW_P1IFldzXPzSfmmG1pfqRwyEL3vyF0c6ggagApybN-u8rRaCQ8ME9W1kKULUXWGxXE0zdUD81vgaNL9mUIrYvWKphNiKQ&lib=MrjU0Sq8WD4-z-l1WJsAZhN6tyVXgXC8_"
+  );
+
+  outreachData = await response.json();
+
+  console.table(outreachData);
+
+  const mappingResponse = await fetch('community_mapping.json');
+  nameFixes = await mappingResponse.json();
+
+  const geoResponse = await fetch('neighborhoods.geojson');
+  const neighborhoods = await geoResponse.json();
+  
+  const geoNames = neighborhoods.features.map(f => f.properties.pri_neigh);
+
+  const unmatched = outreachData.filter(row => {
+    const matchingGeoName = Object.keys(nameFixes).find(
+      geoName => nameFixes[geoName] === row.community
+    ) || row.community;
+
+    return !geoNames.includes(matchingGeoName);
+  });
+
+  console.log("Unmatched communities:", unmatched);
+  
+  
+
+  L.geoJSON(neighborhoods, {
+    style: styleNeighborhood,
+    onEachFeature: popupNeighborhood
+  }).addTo(map);
+}
+
+loadData();
+
+</script>
+
+</body>
+</html>
+
+
+
+
+
+
